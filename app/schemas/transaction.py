@@ -1,6 +1,6 @@
 from decimal import Decimal
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
 
 class TransactionResponse(BaseModel):
@@ -13,3 +13,8 @@ class TransactionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class PaginatedTransactionsResponse(BaseModel):
+    items: List[TransactionResponse]
+    next_cursor: Optional[str] = None
+

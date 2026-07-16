@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import uuid
 from sqlalchemy import Column, String, Numeric, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
@@ -16,7 +17,7 @@ class BalanceTransaction(Base):
     unit_price_at_time = Column(Numeric(18, 4), nullable=True)
     
     # Store creation date with timezone support, indexed for pagination
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=func.now(), index=True)
 
     customer = relationship("Customer", back_populates="transactions")
     product = relationship("Product")

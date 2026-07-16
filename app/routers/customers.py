@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
@@ -6,7 +6,7 @@ from app.repositories.customer import CustomerRepository
 from app.repositories.transaction import TransactionRepository
 from app.services.billing import BillingService
 from app.schemas.customer import CustomerCreate, CustomerResponse, CreditRequest
-from app.schemas.transaction import TransactionResponse
+from app.schemas.transaction import TransactionResponse, PaginatedTransactionsResponse
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
@@ -55,11 +55,11 @@ async def add_customer_credit(
     billing_service = BillingService(db)
     return await billing_service.add_credit(customer_id, request.amount)
 
-@router.get("/{customer_id}/transactions", response_model=List[TransactionResponse])
+@router.get("/{customer_id}/transactions", response_model=PaginatedTransactionsResponse)
 async def list_customer_transactions(
     customer_id: str,
     limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    cursor: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
     # Verify customer exists first
@@ -72,4 +72,5 @@ async def list_customer_transactions(
         )
     
     tx_repo = TransactionRepository(db)
-    return await tx_repo.list_by_customer_id(customer_id, limit, offset)
+    items, next_cursor = await tx_repo.list_by_customer_id_paginated(customer_id, limit, cursor)
+    return {"items": items, "next_cursor": next_cursor}

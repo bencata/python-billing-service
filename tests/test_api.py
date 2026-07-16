@@ -68,10 +68,24 @@ async def test_add_credit_and_list_transactions(client: AsyncClient):
     assert balance_data["customer_id"] == customer_id
     assert float(balance_data["balance"]) == 100.50
 
-    # 4. List transactions
-    response = await client.get(f"/customers/{customer_id}/transactions")
+    # 4. List transactions and verify cursor-based pagination
+    # Add a second credit transaction
+    await client.post(f"/customers/{customer_id}/credit", json={"amount": "50.00"})
+
+    # Fetch first page with limit 1
+    response = await client.get(f"/customers/{customer_id}/transactions?limit=1")
     assert response.status_code == 200
-    txs = response.json()
-    assert len(txs) == 1
-    assert txs[0]["id"] == tx["id"]
-    assert float(txs[0]["amount"]) == 100.50
+    page1 = response.json()
+    assert len(page1["items"]) == 1
+    assert float(page1["items"][0]["amount"]) == 50.00
+    assert page1["next_cursor"] is not None
+
+    cursor = page1["next_cursor"]
+
+    # Fetch second page using the cursor
+    response = await client.get(f"/customers/{customer_id}/transactions?limit=1&cursor={cursor}")
+    assert response.status_code == 200
+    page2 = response.json()
+    assert len(page2["items"]) == 1
+    assert float(page2["items"][0]["amount"]) == 100.50
+    assert page2["next_cursor"] is None
