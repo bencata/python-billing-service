@@ -1,7 +1,10 @@
+from app.logging_config import setup_logging
+setup_logging()
+
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.routers import customers, products, usage
+from app.routers import customers, products, usage, health
 from alembic.config import Config
 from alembic import command
 from app.services.outbox_publisher import start_outbox_publisher
@@ -46,6 +49,7 @@ app = FastAPI(
 app.include_router(customers.router)
 app.include_router(products.router)
 app.include_router(usage.router)
+app.include_router(health.router)
 
 @app.get("/")
 def read_root():

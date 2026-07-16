@@ -1,5 +1,23 @@
 import pytest
 from httpx import AsyncClient
+from unittest.mock import patch, AsyncMock
+
+@pytest.mark.asyncio
+async def test_health_liveness(client: AsyncClient):
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+@pytest.mark.asyncio
+async def test_health_readiness(client: AsyncClient):
+    with patch("redis.asyncio.Redis.ping", new_callable=AsyncMock) as mock_ping:
+        mock_ping.return_value = True
+        response = await client.get("/ready")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["database"] == "connected"
+        assert data["redis"] == "connected"
 
 @pytest.mark.asyncio
 async def test_create_and_get_customer(client: AsyncClient):

@@ -4,6 +4,9 @@ from celery import Celery
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services.billing import BillingService
+from app.logging_config import setup_logging
+
+setup_logging()
 
 # Initialize Celery app
 celery_app = Celery(
