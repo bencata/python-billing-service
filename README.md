@@ -70,8 +70,8 @@ uv run --extra dev pytest
 
 ## 📑 Documentation Index
 
-- **[System Architecture & Design Docs](file:///Users/bencata/Desktop/studies/job_eyal/senior-python-usage-billing-assignment/docs/design_and_architecture.md)**: Deep dive into the Transactional Outbox workflow, sequence diagrams, SQLite concurrency hooks, and table schemas.
-- **[API Endpoint Reference](file:///Users/bencata/Desktop/studies/job_eyal/senior-python-usage-billing-assignment/docs/api_endpoints.md)**: HTTP method definitions, request parameters, response JSON schemas, and example payloads.
+- **[System Architecture & Design Docs](docs/design_and_architecture.md)**: Deep dive into the Transactional Outbox workflow, sequence diagrams, SQLite concurrency hooks, and table schemas.
+- **[API Endpoint Reference](docs/api_endpoints.md)**: HTTP method definitions, request parameters, response JSON schemas, and example payloads.
 
 ---
 
