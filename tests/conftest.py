@@ -1,8 +1,8 @@
 import asyncio
 import os
 import pytest
+import sqlalchemy as sa
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from alembic.config import Config
 from alembic import command
 
@@ -10,7 +10,7 @@ from alembic import command
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_billing.db"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
-from app.database import get_db
+from app.database import AsyncSessionLocal
 from app.main import app
 
 @pytest.fixture(scope="session", autouse=True)
@@ -28,36 +28,22 @@ def run_migrations():
             except OSError:
                 pass
 
-@pytest.fixture
-async def db():
-    # Create engine and configure immediate write transaction lock listener for SQLite tests
-    engine = create_async_engine(TEST_DATABASE_URL, future=True)
-    from sqlalchemy import event
-    @event.listens_for(engine.sync_engine, "begin")
-    def do_begin(conn):
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
-
-    async_session = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autocommit=False,
-        autoflush=False,
-    )
-    async with async_session() as session:
-        yield session
-        await session.rollback()
-    await engine.dispose()
+@pytest.fixture(autouse=True)
+async def clean_database():
+    # Truncate tables before each test to ensure test isolation
+    async with AsyncSessionLocal() as session:
+        # SQLite does not support TRUNCATE, so we use DELETE
+        await session.execute(sa.text("DELETE FROM balance_transactions;"))
+        await session.execute(sa.text("DELETE FROM products;"))
+        await session.execute(sa.text("DELETE FROM customers;"))
+        await session.execute(sa.text("DELETE FROM idempotency_keys;"))
+        await session.commit()
 
 @pytest.fixture
-async def client(db):
-    # Override get_db dependency in FastAPI app with test db session
-    async def override_get_db():
-        yield db
-
-    app.dependency_overrides[get_db] = override_get_db
-    # entering AsyncClient context manager triggers startup and shutdown lifespan events
+async def client():
+    # No dependency override is needed. The app naturally resolves get_db
+    # to create fresh individual database sessions, connecting to the test DB URL.
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # entering context manager triggers FastAPI startup/shutdown lifespan events
         yield ac
-    app.dependency_overrides.clear()

@@ -146,3 +146,49 @@ Retrieves product details.
     "id": "a0a39217-dd37-4ae6-b56e-91787f802d80"
   }
   ```
+
+---
+
+## Usage Ingestion API
+
+### 1. Report Usage (Synchronous Ingestion)
+Accepts a usage event and charges the customer balance synchronously. Enforces transaction serialization to protect against overdrafts, and guarantees request idempotency using the `Idempotency-Key` header.
+
+- **Method**: `POST`
+- **Path**: `/usage`
+- **Headers**:
+  - `Idempotency-Key` (String, Required): A unique caller-provided identifier for deduplication.
+- **Request Body**:
+  ```json
+  {
+    "customer_id": "495b63bb-b75c-4feb-ba0d-31eaf80c0dc9",
+    "product_id": "a0a39217-dd37-4ae6-b56e-91787f802d80",
+    "quantity": "2.5000"
+  }
+  ```
+- **Response** (HTTP 200 OK):
+  ```json
+  {
+    "transaction_id": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "customer_id": "495b63bb-b75c-4feb-ba0d-31eaf80c0dc9",
+    "amount": "-0.1250",
+    "remaining_balance": "100.3750",
+    "product_id": "a0a39217-dd37-4ae6-b56e-91787f802d80",
+    "quantity": "2.5000",
+    "unit_price": "0.0500"
+  }
+  ```
+- **Error Responses**:
+  - **HTTP 400 Bad Request** (e.g., Insufficient funds or payload hash mismatch for the idempotency key):
+    ```json
+    {
+      "detail": "Insufficient funds. Required: 0.1250, Available: 0.0000"
+    }
+    ```
+  - **HTTP 409 Conflict** (The request is currently being processed concurrently):
+    ```json
+    {
+      "detail": "Request is already processing."
+    }
+    ```
+
