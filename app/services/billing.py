@@ -134,3 +134,67 @@ class BillingService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An error occurred during processing: {str(e)}"
             )
+
+    async def execute_usage_billing(
+        self,
+        idempotency_key: str,
+        customer_id: str,
+        product_id: str,
+        quantity: Decimal
+    ) -> None:
+        """
+        Executes the actual billing logic asynchronously inside the Celery worker.
+        """
+        ik = await self.idempotency_repo.get(idempotency_key)
+        if not ik:
+            raise ValueError(f"Idempotency record not found for key: {idempotency_key}")
+
+        if ik.status == "SUCCESS":
+            # Already completed: skip (idempotency safety)
+            return
+
+        try:
+            customer = await self.customer_repo.get_by_id(customer_id)
+            if not customer:
+                raise ValueError(f"Customer with ID {customer_id} not found.")
+
+            product = await self.product_repo.get_by_id(product_id)
+            if not product:
+                raise ValueError(f"Product with ID {product_id} not found.")
+
+            charge = quantity * product.price_per_unit
+            if customer.balance < charge:
+                # Insufficient funds business error: mark key as FAILED and save details
+                ik.status = "FAILED"
+                ik.response_body = {"detail": f"Insufficient funds. Required: {charge}, Available: {customer.balance}"}
+                await self.db.flush()
+                return
+
+            customer.balance -= charge
+            tx = await self.transaction_repo.create(
+                customer_id=customer_id,
+                amount=-charge,
+                product_id=product_id,
+                quantity=quantity,
+                unit_price_at_time=product.price_per_unit,
+            )
+
+            response_data = {
+                "transaction_id": tx.id,
+                "customer_id": customer_id,
+                "amount": str(-charge),
+                "remaining_balance": str(customer.balance),
+                "product_id": product_id,
+                "quantity": str(quantity),
+                "unit_price": str(product.price_per_unit)
+            }
+
+            ik.status = "SUCCESS"
+            ik.response_body = response_data
+            await self.db.flush()
+
+        except Exception as e:
+            # Let the database transaction rollback naturally.
+            # We don't mark FAILED for system exceptions here, because we want Celery to retry
+            # the task if there's a transient failure (e.g. SQLite database locked).
+            raise e

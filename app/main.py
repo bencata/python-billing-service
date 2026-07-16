@@ -1,8 +1,10 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.routers import customers, products, usage
 from alembic.config import Config
 from alembic import command
+from app.services.outbox_publisher import start_outbox_publisher
 
 def run_db_migrations():
     print("Running database migrations...")
@@ -14,7 +16,24 @@ def run_db_migrations():
 async def lifespan(app: FastAPI):
     # Run migrations on startup
     run_db_migrations()
+    
+    # Setup shutdown event and start Outbox Publisher background worker
+    shutdown_event = asyncio.Event()
+    app.state.shutdown_event = shutdown_event
+    publisher_task = asyncio.create_task(start_outbox_publisher(shutdown_event))
+    
     yield
+    
+    # Trigger publisher stop
+    shutdown_event.set()
+    try:
+        await asyncio.wait_for(publisher_task, timeout=5.0)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        publisher_task.cancel()
+        try:
+            await publisher_task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title="Usage-Based Billing Service",
