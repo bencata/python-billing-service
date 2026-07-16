@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.repositories.customer import CustomerRepository
-from app.schemas.customer import CustomerCreate, CustomerResponse
+from app.repositories.transaction import TransactionRepository
+from app.services.billing import BillingService
+from app.schemas.customer import CustomerCreate, CustomerResponse, CreditRequest
+from app.schemas.transaction import TransactionResponse
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
@@ -41,3 +45,31 @@ async def get_customer_balance(
             detail="Customer not found"
         )
     return {"customer_id": customer.id, "balance": customer.balance}
+
+@router.post("/{customer_id}/credit", response_model=TransactionResponse)
+async def add_customer_credit(
+    customer_id: str,
+    request: CreditRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    billing_service = BillingService(db)
+    return await billing_service.add_credit(customer_id, request.amount)
+
+@router.get("/{customer_id}/transactions", response_model=List[TransactionResponse])
+async def list_customer_transactions(
+    customer_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify customer exists first
+    repo = CustomerRepository(db)
+    customer = await repo.get_by_id(customer_id)
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found"
+        )
+    
+    tx_repo = TransactionRepository(db)
+    return await tx_repo.list_by_customer_id(customer_id, limit, offset)

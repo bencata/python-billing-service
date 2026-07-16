@@ -13,3 +13,7 @@ class CustomerResponse(CustomerBase):
 
     class Config:
         from_attributes = True
+
+class CreditRequest(BaseModel):
+    amount: Decimal = Field(..., gt=Decimal("0.0"), decimal_places=4)
+
