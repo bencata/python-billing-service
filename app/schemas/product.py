@@ -1,5 +1,5 @@
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -11,5 +11,4 @@ class ProductCreate(ProductBase):
 class ProductResponse(ProductBase):
     id: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

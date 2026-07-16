@@ -1,7 +1,7 @@
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class TransactionResponse(BaseModel):
     id: str
@@ -12,5 +12,4 @@ class TransactionResponse(BaseModel):
     unit_price_at_time: Optional[Decimal] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
