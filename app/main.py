@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.routers import customers, products
+from app.routers import customers, products, usage
 from alembic.config import Config
 from alembic import command
 
@@ -26,6 +26,7 @@ app = FastAPI(
 # Include routers
 app.include_router(customers.router)
 app.include_router(products.router)
+app.include_router(usage.router)
 
 @app.get("/")
 def read_root():
