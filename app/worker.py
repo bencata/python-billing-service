@@ -42,7 +42,10 @@ def process_usage_task(self, payload: dict) -> None:
     Celery task that executes async DB operations inside a synchronous thread execution context.
     """
     try:
-        asyncio.run(_async_process_usage(payload))
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(lambda: asyncio.run(_async_process_usage(payload)))
+            future.result()
     except Exception as exc:
         # Retry with exponential backoff on transient errors (e.g. database locks)
         raise self.retry(exc=exc, countdown=2 ** self.request.retries)

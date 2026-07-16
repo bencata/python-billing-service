@@ -151,8 +151,8 @@ Retrieves product details.
 
 ## Usage Ingestion API
 
-### 1. Report Usage (Synchronous Ingestion)
-Accepts a usage event and charges the customer balance synchronously. Enforces transaction serialization to protect against overdrafts, and guarantees request idempotency using the `Idempotency-Key` header.
+### 1. Report Usage (Asynchronous Ingestion - Transactional Outbox)
+Accepts a usage event and records a pending outbox transaction. Enforces transaction serialization to protect against overdrafts, and guarantees request idempotency using the `Idempotency-Key` header. The actual billing calculation and balance deduction are performed asynchronously by Celery task workers.
 
 - **Method**: `POST`
 - **Path**: `/usage`
@@ -166,7 +166,15 @@ Accepts a usage event and charges the customer balance synchronously. Enforces t
     "quantity": "2.5000"
   }
   ```
-- **Response** (HTTP 200 OK):
+- **Response** (HTTP 202 Accepted - Queued for processing):
+  ```json
+  {
+    "status": "accepted",
+    "message": "Usage report received and queued for processing.",
+    "idempotency_key": "unique-uuid-or-string"
+  }
+  ```
+- **Response** (HTTP 200 OK - If request was already completed successfully previously):
   ```json
   {
     "transaction_id": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
@@ -178,17 +186,19 @@ Accepts a usage event and charges the customer balance synchronously. Enforces t
     "unit_price": "0.0500"
   }
   ```
+- **Response** (HTTP 202 Accepted - If request is currently in progress):
+  ```json
+  {
+    "status": "processing",
+    "message": "Usage report is currently being processed.",
+    "idempotency_key": "unique-uuid-or-string"
+  }
+  ```
 - **Error Responses**:
-  - **HTTP 400 Bad Request** (e.g., Insufficient funds or payload hash mismatch for the idempotency key):
+  - **HTTP 400 Bad Request** (e.g., payload hash mismatch for the same idempotency key):
     ```json
     {
-      "detail": "Insufficient funds. Required: 0.1250, Available: 0.0000"
-    }
-    ```
-  - **HTTP 409 Conflict** (The request is currently being processed concurrently):
-    ```json
-    {
-      "detail": "Request is already processing."
+      "detail": "Idempotency key conflict: payload mismatch."
     }
     ```
 

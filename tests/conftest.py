@@ -10,6 +10,13 @@ from alembic import command
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_billing.db"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
+# Configure Celery in eager mode for tests so tasks execute synchronously inline
+from app.worker import celery_app
+celery_app.conf.update(
+    task_always_eager=True,
+    task_eager_propagates=True,
+)
+
 from app.database import AsyncSessionLocal
 from app.main import app
 
@@ -37,13 +44,13 @@ async def clean_database():
         await session.execute(sa.text("DELETE FROM products;"))
         await session.execute(sa.text("DELETE FROM customers;"))
         await session.execute(sa.text("DELETE FROM idempotency_keys;"))
+        await session.execute(sa.text("DELETE FROM outbox_events;"))
         await session.commit()
 
 @pytest.fixture
 async def client():
-    # No dependency override is needed. The app naturally resolves get_db
-    # to create fresh individual database sessions, connecting to the test DB URL.
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # entering context manager triggers FastAPI startup/shutdown lifespan events
-        yield ac
+    # Manually enter app lifespan to trigger background outbox publisher
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
