@@ -70,70 +70,66 @@ class BillingService:
         await self.db.flush()
 
         try:
-            # 3. Fetch Customer & Product
-            customer = await self.customer_repo.get_by_id(customer_id)
-            if not customer:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Customer with ID {customer_id} not found."
-                )
-
-            product = await self.product_repo.get_by_id(product_id)
-            if not product:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Product with ID {product_id} not found."
-                )
-
-            # 4. Perform Business Logic Calculations & Invariant Checks
-            charge = quantity * product.price_per_unit
-            if customer.balance < charge:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Insufficient funds. Required: {charge}, Available: {customer.balance}"
-                )
-
-            # 5. Deduct Balance & Create Transaction
-            customer.balance -= charge
-            tx = await self.transaction_repo.create(
-                customer_id=customer_id,
-                amount=-charge,
-                product_id=product_id,
-                quantity=quantity,
-                unit_price_at_time=product.price_per_unit,
-            )
-
-            response_data = {
-                "transaction_id": tx.id,
-                "customer_id": customer_id,
-                "amount": str(-charge),
-                "remaining_balance": str(customer.balance),
-                "product_id": product_id,
-                "quantity": str(quantity),
-                "unit_price": str(product.price_per_unit)
-            }
-
-            # 6. Update Idempotency status to SUCCESS and save response
-            await self.idempotency_repo.update(idempotency_key, "SUCCESS", response_body=response_data)
-            return response_data
-
-        except HTTPException as he:
-            # Rollback active database changes
-            await self.db.rollback()
-            
-            # Start a nested subtransaction block to record the FAILED state in the DB
             async with self.db.begin_nested():
-                await self.idempotency_repo.update(idempotency_key, "FAILED")
-            raise he
+                # 3. Fetch Customer & Product
+                customer = await self.customer_repo.get_by_id(customer_id)
+                if not customer:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Customer with ID {customer_id} not found."
+                    )
+
+                product = await self.product_repo.get_by_id(product_id)
+                if not product:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Product with ID {product_id} not found."
+                    )
+
+                # 4. Perform Business Logic Calculations & Invariant Checks
+                charge = quantity * product.price_per_unit
+                if customer.balance < charge:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Insufficient funds. Required: {charge}, Available: {customer.balance}"
+                    )
+
+                # 5. Deduct Balance & Create Transaction
+                customer.balance -= charge
+                tx = await self.transaction_repo.create(
+                    customer_id=customer_id,
+                    amount=-charge,
+                    product_id=product_id,
+                    quantity=quantity,
+                    unit_price_at_time=product.price_per_unit,
+                )
+
+                response_data = {
+                    "transaction_id": tx.id,
+                    "customer_id": customer_id,
+                    "amount": str(-charge),
+                    "remaining_balance": str(customer.balance),
+                    "product_id": product_id,
+                    "quantity": str(quantity),
+                    "unit_price": str(product.price_per_unit)
+                }
+
+                # 6. Update Idempotency status to SUCCESS and save response
+                await self.idempotency_repo.update(idempotency_key, "SUCCESS", response_body=response_data)
+                return response_data
 
         except Exception as e:
-            await self.db.rollback()
-            async with self.db.begin_nested():
-                await self.idempotency_repo.update(idempotency_key, "FAILED")
+            # The nested transaction (savepoint) has rolled back the customer/transaction changes.
+            # We now update the idempotency key status to FAILED in the active parent transaction.
+            await self.idempotency_repo.update(idempotency_key, "FAILED")
+            await self.db.commit()
+            
+            if isinstance(e, HTTPException):
+                raise
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An error occurred during processing: {str(e)}"
-            )
+            ) from e
 
     async def execute_usage_billing(
         self,
